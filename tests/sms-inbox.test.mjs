@@ -12,6 +12,7 @@ import { createIntegrationSettings } from '../server/integration-settings.ts';
 import { sendDirect } from '../server/direct-providers.ts';
 import { HttpError } from '../server/auth.ts';
 import { postgresSkip, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 const token = (prefix, value) => prefix + String(value).padStart(32, '0');
@@ -271,7 +272,7 @@ test('actual HTTP campaign sends, signed replies and receipts survive restart wi
   try {
     await listen();
     async function request(path, method = 'GET', body, options = {}) { const result = await fetch(base + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...options.headers }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: result.status, data: await result.json(), cookie: result.headers.get('set-cookie')?.split(';')[0] }; }
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'SMS owner', email: 'sms-owner@example.test', password: 'sms fixture long passphrase', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'SMS owner', email: 'sms-owner@example.test', password: 'sms fixture long passphrase' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     const projectId = setup.data.projectId, path = `/api/projects/${projectId}/sms-inbox`;
     assert.equal((await request(`/api/projects/${projectId}/direct/contacts`, 'POST', { name: 'SMS test recipient', phone: '+12025550123', consents: { sms: true }, consentSource: 'Isolated test opt-in' })).status, 201);
     const draft = await request(`/api/projects/${projectId}/direct/campaigns`, 'POST', { name: 'HTTP campaign', channel: 'sms', text: 'Your requested service update.' }); assert.equal(draft.status, 201);

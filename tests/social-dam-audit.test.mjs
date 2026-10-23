@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { handleIntegration } from '../server/integrations.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('social refresh and publishing reject malformed preview fields before persisting them', { skip: postgresSkip }, async t => {
   const { db } = await testDatabase(t), originalFetch = globalThis.fetch, records = new Map(), accepted = [];
@@ -87,7 +88,7 @@ test('a reviewed partial post retries only failed accounts and preserves publish
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Partial fixture', email: 'partial@example.test', password: 'a sufficiently long fixture password', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'Partial fixture', email: 'partial@example.test', password: 'a sufficiently long fixture password' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     const state = (await request('/api/state')).data, project = `/api/projects/${state.projectId}`;
     assert.equal((await request(project, 'PATCH', { zernioProfileId: 'partial-profile' })).status, 200);
     const post = await app.store.create(state.projectId, 'posts', { content: remote.content, status: 'partial', externalId: remote._id, zernioProfileId: 'partial-profile' }), route = project + '/integrations/social';

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP invitation links safely onboard new accounts, require the existing identity, preserve workspace scope and cannot reset passwords', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-collaboration-http-')), origin = 'http://127.0.0.1:3000', app = await testApp(t, { dataDir, env: {}, appUrl: origin });
@@ -16,7 +17,7 @@ test('HTTP invitation links safely onboard new accounts, require the existing id
   }
   const token = result => new URL(result.data.url).hash.slice('#invite='.length);
   try {
-    const setup = await request('/api/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Workspace owner', email: 'collaboration-owner@example.test', password: ownerPassword, sample: false } });
+    const setup = await request('/api/auth/setup', { method: 'POST', body: { name: 'Workspace owner', email: 'collaboration-owner@example.test', password: ownerPassword } }); setup.data.projectId = await firstProject(app, setup);
     assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const ownerState = (await request('/api/state')).data, workspaceId = ownerState.workspaces[0].id, projectId = ownerState.projectId, team = `/api/workspaces/${workspaceId}`;
     assert.equal((await request(team + '/invitations', { cookie: null })).status, 401);
@@ -51,7 +52,7 @@ test('HTTP invitation links safely onboard new accounts, require the existing id
     assert.equal((await request('/api/settings/integrations', { cookie: colleagueCookie })).status, 403);
     assert.equal((await request(invitation, { cookie: null })).status, 410);
     assert.equal((await request(invitation, { method: 'POST', body: signup, cookie: null })).status, 410);
-    assert.equal((await request('/api/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Uninvited', email: 'uninvited@example.test', password: newPassword }, cookie: null })).status, 409, 'Open signup remains closed after instance setup.');
+    assert.equal((await request('/api/auth/setup', { method: 'POST', body: { name: 'Uninvited', email: 'uninvited@example.test', password: newPassword }, cookie: null })).status, 409, 'Open signup remains closed after instance setup.');
     assert.equal((await request('/api/auth/login', { method: 'POST', body: { email: colleague.email, password: ownerPassword }, cookie: null })).status, 401);
     const ownLogin = await request('/api/auth/login', { method: 'POST', body: { email: colleague.email, password: newPassword }, cookie: null }); assert.equal(ownLogin.status, 200); assert.equal(ownLogin.data.user.id, colleagueId);
     assert.equal((await app.sql.get('SELECT role FROM memberships WHERE workspace_id=? AND user_id=?', workspaceId, ownerState.user.id)).role, 'owner');
@@ -96,7 +97,7 @@ test('HTTP invitation links use #invite=, and inspect, accept and invitation sig
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Workspace owner', email: 'transport-owner@example.test', password: 'fixture owner personal password', sample: false } });
+    const setup = await request('/api/auth/setup', { method: 'POST', body: { name: 'Workspace owner', email: 'transport-owner@example.test', password: 'fixture owner personal password' } }); setup.data.projectId = await firstProject(app, setup);
     assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const workspaceId = (await request('/api/state')).data.workspaces[0].id;
     const created = await request(`/api/workspaces/${workspaceId}/invitations`, { method: 'POST', body: { email: 'transport@example.test', role: 'editor' } }), link = new URL(created.data.url);

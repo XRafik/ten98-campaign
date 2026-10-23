@@ -15,6 +15,7 @@ import { handleZernioAdEvents } from '../server/zernio-ad-events.ts';
 import { IntegrationError } from '../server/provider-core.ts';
 import { createStore } from '../server/database.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 
@@ -153,7 +154,7 @@ test('signed paid-ad HTTP delivery is minimized before acknowledgement and authe
   try {
     await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${app.server.address().port}`;
     const request = async (path, body, authenticated = true, method = body ? 'POST' : 'GET') => { const result = await originalFetch(origin + '/api' + path, { method, headers: { Origin: 'https://ad-events.example.test', ...(authenticated && cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); const next = result.headers.get('set-cookie'); if (next) cookie = next.split(';')[0]; return { status: result.status, data: await result.json() }; };
-    const setup = await request('/auth/setup', { token: app.config.bootstrapToken, name: 'Paid event owner', email: 'ad-events@example.test', password: 'Synthetic paid event passphrase 2026!', sample: false }); assert.equal(setup.status, 201); const projectId = setup.data.projectId; await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, projectId);
+    const setup = await request('/auth/setup', { name: 'Paid event owner', email: 'ad-events@example.test', password: 'Synthetic paid event passphrase 2026!' }); setup.data.projectId = await firstProject(app, setup, { cookie }); assert.equal(setup.status, 201); const projectId = setup.data.projectId; await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, projectId);
     const payload = event(), raw = JSON.stringify(payload), url = origin + '/api/webhooks/zernio'; assert.equal((await originalFetch(url, { method: 'POST', body: raw })).status, 401);
     let result = await originalFetch(url, { method: 'POST', headers: { 'x-zernio-signature': sign(raw) }, body: raw }); assert.equal(result.status, 202); assert.doesNotMatch((await app.sql.get('SELECT payload FROM webhook_events WHERE id=?', payload.id)).payload, /PRIVATE_/); await app.webhooks.processPending();
     const path = `/projects/${projectId}/integrations/ads/events`; assert.equal((await request(path + '?accountId=meta-a&adAccountId=act_123', undefined, false)).status, 401);

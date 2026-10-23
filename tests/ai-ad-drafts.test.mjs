@@ -25,7 +25,7 @@ test('AI ad suggestions stay private, reviewable and unsubmitted until the user 
       const response = await fetch(base + '/api' + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json', 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
       cookie = response.headers.get('set-cookie')?.split(';')[0] || cookie; return { status: response.status, data: await response.json() };
     }
-    const setup = await api('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Ad studio', email: 'ai-ads@example.test', password: 'synthetic ai ad fixture password', sample: false }), projectId = setup.data.projectId, path = `/projects/${projectId}/agent`;
+    const setup = await api('/auth/setup', 'POST', { name: 'Ad studio', email: 'ai-ads@example.test', password: 'synthetic ai ad fixture password' }), projectId = (await api('/projects', 'POST', { workspaceId: setup.data.workspaceId, name: 'Brand launch' }, 'ai-ad-draft-first-project')).data.project.id, path = `/projects/${projectId}/agent`;
     const generated = await api(path + '/run', 'POST', { message: 'Suggest a Google Search ad for our services.' });
     assert.equal(generated.status, 200, JSON.stringify(generated.data)); assert.equal(calls, 2); assert.equal(generated.data.run.actions.length, 1);
     const action = generated.data.run.actions[0]; assert.equal(action.collection, 'ads'); assert.deepEqual(action.data, draft);

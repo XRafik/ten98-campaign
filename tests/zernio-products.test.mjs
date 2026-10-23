@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/index.ts';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 // A restart keeps the test database: the replacement app shares the injected pool and the test's finally closes it.
 async function reopen(app, options) {
@@ -79,7 +80,7 @@ test('HTTP Shopify collection title rename uses exact partial PATCH, independent
   const route = (collection, accountId = account._id) => `/api/projects/${projectId}/integrations/products/${accountId}/collections/${encodeURIComponent(collection.id)}`;
   async function review(collection, accountId = account._id, title = 'Renamed collection') { const result = await request(route(collection, accountId) + '/edit'); assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.data.accountId, accountId); assert.match(result.data.version, /^[a-f0-9]{64}$/); return { version: result.data.version, title }; }
   try {
-    await listen(); const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Collection QA', email: 'collection-rename@example.test', password: 'a long local collection rename password', sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    await listen(); const setup = await request('/api/auth/setup', { body: { name: 'Collection QA', email: 'collection-rename@example.test', password: 'a long local collection rename password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', account.profileId, projectId);
     for (const id of ['gid://shopify/Collection/000123', '00124', 'opaque:collection/+=?#']) {
       const collection = addCollection(id), original = structuredClone(collection), body = await review(collection, account._id, '  Autumn  '), key = 'collection-success-' + ++keySequence, before = writes().length, readCount = calls.length;
@@ -426,7 +427,7 @@ test('HTTP collection member pages support scoped viewers and suppress final-awa
   }
   try {
     await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); }); base = `http://127.0.0.1:${app.server.address().port}`;
-    const setup = await request('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Collection QA', email: 'collection-qa@example.test', password: 'a long local collection fixture password', sample: false });
+    const setup = await request('/api/auth/setup', { name: 'Collection QA', email: 'collection-qa@example.test', password: 'a long local collection fixture password' }); setup.data.projectId = await firstProject(app, setup);
     assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', 'profile-a', projectId); await app.sql.run("UPDATE memberships SET role='viewer'");
     const route = `/api/projects/${projectId}/integrations/products/${f.accountId}?collectionId=${encodeURIComponent(f.state.collection.id)}`;
@@ -575,7 +576,7 @@ test('HTTP Shopify content and classification updates use fresh reviews, exact P
   const review = async (product, fields = { title: 'Reviewed title' }, accountId) => { const result = await request(route(product, accountId)); assert.equal(result.status, 200, JSON.stringify(result)); assert.match(result.data.version, /^[a-f0-9]{64}$/); assert.equal(result.data.store.accountId, accountId || account._id); return { version: result.data.version, confirmUpdate: true, ...fields }; };
   try {
     await listen();
-    const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Product QA', email: 'product-qa@example.test', password: 'a long local product fixture password', sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    const setup = await request('/api/auth/setup', { body: { name: 'Product QA', email: 'product-qa@example.test', password: 'a long local product fixture password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', account.profileId, projectId);
     for (const fields of [{ title: '  Reviewed title  ' }, { descriptionHtml: '<p>Reviewed <strong>HTML</strong></p>' }, { title: 'Reviewed title', descriptionHtml: '' }, { vendor: 'Reviewed vendor' }, { vendor: '' }, { title: 'Reviewed title', vendor: 'Reviewed vendor' }, { productType: '  Exact, Product Type  ' }, { productType: '' }, { tags: ['Blue,Red', ' Case ', 'case', 'case', '', 'line\nbreak', 'tab\tlabel'] }, { tags: [] }, { productType: 'Shirts', tags: ['<script>literal tag</script>', 'summer'] }]) {
       const product = addProduct(), body = await review(product, fields), key = 'product-success-' + product.id, before = writes().length;
@@ -751,7 +752,7 @@ test('HTTP Shopify draft creation forces one priced variant, fresh store review,
   async function review(fields = {}, accountId = account._id) { const result = await request(route(accountId) + '/store'); assert.equal(result.status, 200, JSON.stringify(result)); assert.match(result.data.creationVersion, /^[a-f0-9]{64}$/); return { version: result.data.creationVersion, confirmCreate: true, title: '  Reviewed draft  ', price: '00019.90', ...fields }; }
   const evidence = key => app.sql.get('SELECT account_id,native_product_id FROM zernio_product_create_receipts WHERE project_id=? AND request_key=?', projectId, key);
   try {
-    await listen(); const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Create QA', email: 'product-create@example.test', password: 'a long local product creation password', sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    await listen(); const setup = await request('/api/auth/setup', { body: { name: 'Create QA', email: 'product-create@example.test', password: 'a long local product creation password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', account.profileId, projectId);
     for (const fields of [{}, { descriptionHtml: '' }, { descriptionHtml: '<p>Reviewed HTML</p>' }, { price: '0' }, { price: '9'.repeat(80) + '.10' }]) {
       freshStore(); const body = await review(fields), key = 'product-created-' + storeSequence, count = writes().length;
@@ -890,7 +891,7 @@ test('HTTP Shopify single-variant price uses exact native fields, verified readb
   async function review(product, fields = {}, accountId = account._id, content = false) { const result = await request(route(product, accountId)); assert.equal(result.status, 200, JSON.stringify(result)); assert.match(result.data.version, /^[a-f0-9]{64}$/); return { version: result.data.version, ...(content ? { confirmUpdate: true, title: 'Reviewed content title' } : { confirmPrice: true, variantId: 'variant-2', price: '00029.90' }), ...fields }; }
   const grants = () => { Object.assign(store, { capabilities: ['products.read', 'products.price'], missingCapabilities: [], currency: 'AED', domain: f.state.store.domain }); Object.assign(account, f.account, { profileId: 'product-price-profile', needsReconnection: false }); };
   try {
-    await listen(); const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Price QA', email: 'product-price@example.test', password: 'a long local product price password', sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    await listen(); const setup = await request('/api/auth/setup', { body: { name: 'Price QA', email: 'product-price@example.test', password: 'a long local product price password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', account.profileId, projectId);
     for (const price of ['00029.90', '0', '9'.repeat(80) + '.10']) {
       const product = addProduct(), original = structuredClone(product), body = await review(product, { price }), key = 'price-success-' + product.id, count = writes().length;
@@ -1032,7 +1033,7 @@ for (const stateAction of ['deactivate', 'archive', 'activate', 'delete']) test(
   async function review(product, kind = stateAction, accountId = account._id) { const result = await request(route(product, accountId)); assert.equal(result.status, 200, JSON.stringify(result)); return { version: kind === 'delete' ? result.data.deleteVersion : kind === 'archive' ? result.data.archiveVersion : kind === 'activate' ? result.data.activateVersion : result.data.version, ...(kind === 'delete' ? { confirmDelete: true } : kind === 'archive' ? { confirmArchive: true } : kind === 'activate' ? { confirmActivate: true } : kind === 'deactivate' ? { confirmDeactivate: true } : kind === 'update' ? { confirmUpdate: true, title: 'Reviewed content' } : { confirmPrice: true, variantId: 'variant-1', price: '30' }) }; }
   const grants = () => { Object.assign(store, { capabilities: ['products.read', 'products.status', 'products.update', 'products.price'], missingCapabilities: [], currency: 'AED', domain: f.state.store.domain }); Object.assign(account, f.account, { profileId: 'product-state-profile', needsReconnection: false }); };
   try {
-    await listen(); const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'State QA', email: 'product-state@example.test', password: 'a long local product state password', sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    await listen(); const setup = await request('/api/auth/setup', { body: { name: 'State QA', email: 'product-state@example.test', password: 'a long local product state password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', account.profileId, projectId);
     const product = addProduct(), body = await review(product), key = 'deactivate-success', before = writes().length;
     const result = await request(route(product) + '/' + stateAction, { body, key }); assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.data.operation.status, 'complete'); assert.equal(result.data.readback, true); if (!deleting) assert.match(result.data.version, /^[a-f0-9]{64}$/);
@@ -1308,7 +1309,7 @@ test('HTTP every product and collection mutation permits exact receipt-only chec
   async function request(path, body, key) { const response = await fetch(base + path, { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}), 'Idempotency-Key': key }, body: JSON.stringify(body) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
   try {
     await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); }); base = `http://127.0.0.1:${app.server.address().port}`;
-    const setup = await request('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Receipt QA', email: 'receipt-check@example.test', password: 'a long local receipt check password', sample: false }, 'receipt-check-setup'); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    const setup = await request('/api/auth/setup', { name: 'Receipt QA', email: 'receipt-check@example.test', password: 'a long local receipt check password' }, 'receipt-check-setup'); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', 'receipt-check-profile', projectId);
     const version = 'a'.repeat(64), rows = [
       ['shop/create', { version, confirmCreate: true, title: 'Draft', price: '1' }], ['shop/123/update', { version, confirmUpdate: true, title: 'New title' }], ['shop/123/price', { version, confirmPrice: true, variantId: 'variant-1', price: '1' }],

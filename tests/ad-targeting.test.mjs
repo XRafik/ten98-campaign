@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('Meta interest HTTP reads project safe results only while account access stays current', { skip: postgresSkip }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ten98-ad-targeting-')), origin = 'http://127.0.0.1:3018';
@@ -43,7 +44,7 @@ test('Meta interest HTTP reads project safe results only while account access st
   }
   try {
     await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); }); base = `http://127.0.0.1:${app.server.address().port}`;
-    const setup = await http('/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Targeting fixture', email: 'targeting@example.test', password, sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await http('/auth/setup', { method: 'POST', body: { name: 'Targeting fixture', email: 'targeting@example.test', password } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     state = (await http('/state')).data; project = `/projects/${state.projectId}`;
     assert.equal((await http(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
 

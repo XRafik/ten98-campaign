@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { handleIntegration } from '../server/integrations.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 // Current contract: https://docs.zernio.com/platforms/openai-ads
 async function scenario(t, run) {
@@ -133,7 +134,7 @@ test('ChatGPT HTTP flow connects, validates, creates paused and confirms campaig
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`;
   async function request(path, method = 'GET', body, key, auth = cookie) { const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(auth ? { Cookie: auth } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
   try {
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'OpenAI HTTP owner', email: 'openai-http@example.test', password: 'isolated OpenAI HTTP password', sample: false }); cookie = setup.cookie;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'OpenAI HTTP owner', email: 'openai-http@example.test', password: 'isolated OpenAI HTTP password' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie;
     const projectId = setup.data.projectId, route = `/api/projects/${projectId}/integrations/`;
     assert.equal((await request(`/api/projects/${projectId}`, 'PATCH', { zernioProfileId: profileId })).status, 200);
     const connected = await request(route + 'connect/openai-ads', 'POST', { apiKey: 'PRIVATE_ADS_PROVIDER_KEY' }, randomUUID()); assert.equal(connected.status, 200); assert.doesNotMatch(JSON.stringify(connected), /PRIVATE_/);

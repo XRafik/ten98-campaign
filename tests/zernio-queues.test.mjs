@@ -10,6 +10,7 @@ import * as designSystem from '@ten98/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'campaign-queue-')), originalFetch = globalThis.fetch, origin = 'https://queue.example.test', calls = [], queues = [], remotePosts = new Map();
@@ -48,7 +49,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`; let cookie;
   async function request(path, method = 'GET', body, key = randomUUID()) { const response = await originalFetch(base + '/api' + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json', 'Idempotency-Key': key } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Queue owner', email: 'queue@example.test', password: 'a synthetic queue acceptance passphrase', sample: false }); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
+  const setup = await request('/auth/setup', 'POST', { name: 'Queue owner', email: 'queue@example.test', password: 'a synthetic queue acceptance passphrase' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
   await request(project, 'PATCH', { zernioProfileId: 'queue-profile' }); const path = project + '/integrations/queues';
   const list = async () => (await request(path)).data;
   const create = async name => { const current = await list(); return request(path + '/create', 'POST', { name, timezone: 'America/New_York', slots: [{ dayOfWeek: 1, time: '09:00' }], active: true, expectedListVersion: current.version }); };

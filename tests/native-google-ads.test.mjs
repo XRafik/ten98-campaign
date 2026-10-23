@@ -10,6 +10,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
 import * as ui from '@ten98/ui';
+import { firstProject } from './first-project.ts';
 
 const env = { GOOGLE_ADS_CLIENT_ID: 'fixture-client.apps.googleusercontent.com', GOOGLE_ADS_CLIENT_SECRET: 'fixture-client-secret', GOOGLE_ADS_REFRESH_TOKEN: 'fixture-refresh-token', GOOGLE_ADS_DEVELOPER_TOKEN: 'fixture-developer-token', GOOGLE_ADS_LOGIN_CUSTOMER_ID: '9999999999' };
 
@@ -67,7 +68,7 @@ test('native Google Shopping uses an atomic paused resource graph, customer mapp
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`;
   async function request(path, body, key = 'native-google-' + calls.length) { const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { Origin: origin, 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
   try {
-    const setup = await request('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Native Google QA', email: 'native-google@example.test', password: 'Native Google fixture password!', sample: false }); cookie = setup.cookie; assert.equal(setup.status, 201);
+    const setup = await request('/api/auth/setup', { name: 'Native Google QA', email: 'native-google@example.test', password: 'Native Google fixture password!' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; assert.equal(setup.status, 201);
     const state = (await request('/api/state')).data; projectId = state.projectId; const route = `/api/projects/${projectId}/native-google-ads/`;
     assert.equal((await request(route + 'status')).data.configured, true); assert.equal((await request(route + 'account')).status, 409);
     assert.equal((await request(route + 'connection', { customerId: '123-456-7890' })).status, 400);

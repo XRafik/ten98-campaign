@@ -9,6 +9,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const config = () => ({ enabled: true, gap: 2, gapFreq: 'week', startDate: '2070-01-01T09:00:00.000Z', expireCount: 5, expireDate: null, contentVariations: ['First campaign caption', 'Second campaign caption'] });
 async function fixture(t) {
@@ -39,7 +40,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`; let cookie;
   async function request(path, method = 'GET', body, key = randomUUID()) { const response = await originalFetch(base + '/api' + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Recycling owner', email: 'recycling@example.test', password: 'synthetic recycling fixture passphrase', sample: false }); cookie = setup.cookie; const projectId = setup.data.projectId, project = `/projects/${projectId}`; await request(project, 'PATCH', { zernioProfileId: 'recycle-profile' });
+  const setup = await request('/auth/setup', 'POST', { name: 'Recycling owner', email: 'recycling@example.test', password: 'synthetic recycling fixture passphrase' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const projectId = setup.data.projectId, project = `/projects/${projectId}`; await request(project, 'PATCH', { zernioProfileId: 'recycle-profile' });
   const local = await app.store.create(projectId, 'posts', { content: remote.content, platforms: ['facebook', 'twitter'], accounts: ['facebook-recycle', 'twitter-recycle'], status: 'published', externalId: remote._id, zernioProfileId: 'recycle-profile', mediaItems: [], providerResults: remote.platforms }), path = `${project}/integrations/recycling/posts/${local.id}`;
   const detail = async () => (await request(path)).data;
   const review = async (configuration = config()) => request(path + '/review', 'POST', { configuration, expectedFingerprint: (await detail()).fingerprint, confirmReview: true });

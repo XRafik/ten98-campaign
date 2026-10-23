@@ -17,7 +17,7 @@ test('a stale session cookie is reported once as an ended session and cleared', 
     return { status: response.status, data: await response.json(), setCookies: response.headers.getSetCookie() };
   };
   assert.equal((await request('/session')).data.sessionEnded, undefined, 'A first visit without a cookie is not an ended session.');
-  const setup = await request('/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Owner', email: 'owner@example.test', password: 'session ended fixture password', sample: false } });
+  const setup = await request('/auth/setup', { body: { name: 'Owner', email: 'owner@example.test', password: 'session ended fixture password' } });
   const cookie = setup.setCookies.map(value => value.split(';')[0]).join('; ');
   assert.equal((await request('/session', { cookie })).data.sessionEnded, undefined, 'A valid session is not reported as ended.');
   await app.sql.run('DELETE FROM sessions');

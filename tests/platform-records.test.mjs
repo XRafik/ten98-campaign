@@ -15,7 +15,7 @@ test('platform drafts keep metadata and explicit resets, protect DAM references,
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    cookie = (await request('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Platform QA', email: 'variants@example.test', password: 'a long platform fixture password', sample: false })).cookie;
+    const setup = await request('/auth/setup', 'POST', { name: 'Platform QA', email: 'variants@example.test', password: 'a long platform fixture password' }); cookie = setup.cookie; await request('/projects', 'POST', { workspaceId: setup.body.workspaceId, name: 'Brand launch' });
     const state = (await request('/state')).body, path = `/projects/${state.projectId}`;
     const asset = (await request(path + '/assets', 'POST', { name: 'Platform artwork', kind: 'image', url: 'https://cdn.example.com/art.jpg' })).body.record;
     const otherProject = (await request('/projects', 'POST', { name: 'Other project', workspaceId: state.workspaces[0].id })).body.project;

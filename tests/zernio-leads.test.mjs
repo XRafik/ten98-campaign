@@ -8,6 +8,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { postgresSkip, testApp } from './postgres.mjs';
 import { transformWithOxc } from 'vite';
 import * as ui from '@ten98/ui';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 async function fixture(t) {
@@ -61,7 +62,7 @@ async function fixture(t) {
     const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(authenticated && cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(method === 'POST' ? { 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
-  const setup = await request('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Lead owner', email: 'owner@example.test', password: 'synthetic lead acceptance passphrase', sample: false }); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
+  const setup = await request('/auth/setup', 'POST', { name: 'Lead owner', email: 'owner@example.test', password: 'synthetic lead acceptance passphrase' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
   await request(project, 'PATCH', { zernioProfileId: 'lead-profile' });
   const path = project + '/integrations/leads', formPath = platform => `${path}/${platform}-account/forms`, selected = platform => `${formPath(platform)}/${state.forms[platform][0].id}`;
   return { app, state, calls, accounts, project, path, formPath, selected, request, query: '?adAccountId=advertiser-1', writes: () => calls.filter(row => row.method !== 'GET'), async close() { globalThis.fetch = originalFetch; await rm(dataDir, { recursive: true, force: true }); } };

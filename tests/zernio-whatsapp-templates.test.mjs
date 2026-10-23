@@ -10,6 +10,7 @@ import { transformWithOxc } from 'vite';
 import { handleZernioWhatsAppTemplates, templateComponents } from '../server/zernio-whatsapp-templates.ts';
 import { IntegrationError } from '../server/provider-core.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const profileId = 'profile-a', wabaId = '1234567890';
 const form = () => ({ headerFormat: 'text', headerText: 'Hello {{1}}', headerExamples: ['Ana'], headerMediaUrl: '', bodyText: 'Your order {{1}} is ready.', bodyExamples: ['ORDER-123'], footerText: 'Contact our team for help', buttons: [{ type: 'url', text: 'View order', url: 'https://example.com/orders/{{1}}', phoneNumber: '', example: 'ORDER-123' }] });
@@ -229,7 +230,7 @@ test('authenticated HTTP template workflows enforce project routing, CSRF, owner
       const response = await originalFetch(origin + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(csrf ? { Origin: 'https://templates.example.test' } : {}), ...(body ? { 'Content-Type': 'application/json', 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
       const next = response.headers.get('set-cookie'); if (next) cookie = next.split(';')[0]; return { status: response.status, data: await response.json() };
     };
-    const created = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Template QA owner', email: 'templates-qa@example.test', password: 'Synthetic template passphrase 2026!', sample: false }); assert.equal(created.status, 201);
+    const created = await request('/api/auth/setup', 'POST', { name: 'Template QA owner', email: 'templates-qa@example.test', password: 'Synthetic template passphrase 2026!' }); created.data.projectId = await firstProject(app, created, { cookie }); assert.equal(created.status, 201);
     const projectId = created.data.projectId; assert.equal((await request(`/api/projects/${projectId}`, 'PATCH', { zernioProfileId: profileId })).status, 200); const path = `/api/projects/${projectId}/integrations/whatsapp-templates`;
     assert.equal((await request(path + '/overview')).data.accounts[0].id, 'wa-a');
     assert.equal((await request(path + '/templates/create', 'POST', createBody(), 'csrf-template-key', false)).status, 403); assert.equal(upstream.state.writeCount, 0);

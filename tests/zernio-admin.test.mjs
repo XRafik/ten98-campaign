@@ -12,6 +12,7 @@ import { transformWithOxc } from 'vite';
 import { handleZernioAdmin } from '../server/zernio-admin.ts';
 import { IntegrationError } from '../server/provider-core.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 const profileId = 'profile-a';
@@ -99,7 +100,7 @@ test('provider team HTTP reads require live operator and administration and with
   try {
     await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`;
     const password = 'provider team fixture password 2026', email = 'team-operator@example.test';
-    const setup = await request('/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Team operator', email, password, sample: false } }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await request('/auth/setup', { method: 'POST', body: { name: 'Team operator', email, password } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     state = (await request('/state')).data; route = `/projects/${state.projectId}/integrations/admin/team`; const project = `/projects/${state.projectId}`, workspaceId = state.workspaces[0].id, userId = state.user.id;
     assert.equal((await request(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
     let result = await request(route); assert.equal(result.status, 200); assert.equal(result.data.currentUserId, 'provider-caller'); assert.equal(result.data.users[0].role, 'provider-only-role');

@@ -18,7 +18,7 @@ test('account updates, password changes, session revocation and host recovery pr
   }
   try {
     assert.equal((await api('/account')).status, 401);
-    cookie = (await api('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Owner', email: 'account@example.test', password: initial })).cookie;
+    cookie = (await api('/auth/setup', 'POST', { name: 'Owner', email: 'account@example.test', password: initial })).cookie;
     const second = (await api('/auth/login', 'POST', { email: 'account@example.test', password: initial })).cookie;
     assert.equal((await api('/account')).data.activeSessions, 2);
     assert.equal((await api('/account', 'PATCH', { name: 'Updated owner' })).data.user.name, 'Updated owner');

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { transformWithOxc } from 'vite';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const sid = (prefix, number) => prefix + String(number).padStart(32, '0');
 
@@ -34,8 +35,8 @@ test('protected SMS media downloads use project access and server-held credentia
     return originalFetch(base + path, { method, headers: { Origin: origin, ...(auth ? { Cookie: auth } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   }
   try {
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'SMS media operator', email: 'sms-media@example.test', password: 'isolated fixture passphrase', sample: false });
-    assert.equal(setup.status, 201); cookie = setup.headers.get('set-cookie').split(';')[0]; const { projectId, user } = await setup.json();
+    const setup = await request('/api/auth/setup', 'POST', { name: 'SMS media operator', email: 'sms-media@example.test', password: 'isolated fixture passphrase' });
+    assert.equal(setup.status, 201); cookie = setup.headers.get('set-cookie').split(';')[0]; const { workspaceId, user } = await setup.json(), projectId = await firstProject(app, { status: setup.status, data: { workspaceId }, cookie });
     await app.smsInbox.recordOutbound({ id: randomUUID(), projectId, accountSid: env.TWILIO_ACCOUNT_SID, sender: env.TWILIO_FROM_NUMBER, recipient: '+12025550123', providerId: sid('SM', 10), message: 'Original campaign message' });
     const messageSid = sid('MM', 11), mediaUrl = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages/${messageSid}/Media/${sid('ME', 1)}`;
     const incomingPath = `/api/webhooks/twilio/inbound/${projectId}`, form = new URLSearchParams({ AccountSid: env.TWILIO_ACCOUNT_SID, MessageSid: messageSid, From: '+12025550123', To: env.TWILIO_FROM_NUMBER, Body: 'Please review this image', NumMedia: '1', MediaUrl0: mediaUrl, MediaContentType0: 'image/jpeg' });

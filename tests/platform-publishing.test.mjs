@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP platform variants publish, schedule, refresh, edit and retry the exact approved creative with fail-closed provider preflight', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-platform-posts-')), distDir = join(dataDir, 'dist');
@@ -57,7 +58,7 @@ test('HTTP platform variants publish, schedule, refresh, edit and retry the exac
   }
   const post = (path, body, options = {}) => request(path, { ...options, method: 'POST', body });
   try {
-    const setup = await post('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Platform QA', email: 'platform-qa@example.test', password: 'platform fixture password that is long enough', sample: false });
+    const setup = await post('/api/auth/setup', { name: 'Platform QA', email: 'platform-qa@example.test', password: 'platform fixture password that is long enough' }); setup.data.projectId = await firstProject(app, setup);
     assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const state = (await request('/api/state')).data, projectId = state.projectId, project = `/api/projects/${projectId}`, integrations = `${project}/integrations/social`;
     assert.equal((await request(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { oidcEndpoint, workspaceRoles as roles, mayManageWorkspaceMember } from '@ten98/runtime';
 import { assertSchema, closeDatabase, createStore, collections, getDatabase, type Connection, type Executor, type Store } from './database.ts';
-import { createAuth, sessionSecret, bootstrapToken, hashPassword, HttpError, lockWorkspace, memberRole, publicUser, type AuthConfig, type PublicUser } from './auth.ts';
+import { createAuth, sessionSecret, hashPassword, HttpError, lockWorkspace, memberRole, publicUser, type AuthConfig, type PublicUser } from './auth.ts';
 import { setInstanceOperator } from './instance-operators.ts';
 import { seedSample } from './seed.ts';
 import { handleIntegration } from './integrations.ts';
@@ -49,6 +49,8 @@ function text(value: unknown, label: string, max = 120, optional = false): strin
   if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) bad(`${label} is required and must be at most ${max} characters.`);
   return value.trim();
 }
+// Omitted or blank names fall back to the shared default, as in Discover's first-user setup.
+function workspaceName(value: unknown): string { return value === undefined || value === null || (typeof value === 'string' && !value.trim()) ? 'My workspace' : text(value, 'Workspace name'); }
 function email(value: unknown): string { const result = text(value, 'Email', 254).toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result)) bad('Enter a valid email address.'); return result; }
 function password(value: unknown): string { if (typeof value !== 'string' || value.length < 12 || value.length > 128) bad('Use a password between 12 and 128 characters.'); return value; }
 function loginPassword(value: unknown): string { if (typeof value !== 'string' || !value.length || value.length > 128) bad('Enter your password.'); return value; }
@@ -136,7 +138,6 @@ export async function createApp(options: AppOptions = {}) {
   await assertSchema(pool);
   const config: AppConfig = { ...options, env, dataDir, appUrl, sessionSecret: sessionSecret(dataDir, options.sessionSecret || env.SESSION_SECRET), oidcIssuer: env.OIDC_ISSUER || '', oidcClientId: env.OIDC_CLIENT_ID || '', oidcClientSecret: env.OIDC_CLIENT_SECRET || '', oidcAllowedEmails: (env.OIDC_ALLOWED_EMAILS || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean), trustedProxies: env.TRUSTED_PROXIES || '' };
   config.oidcEnabled = Boolean(config.oidcIssuer && config.oidcClientId);
-  if (!await claimed(db)) config.bootstrapToken = bootstrapToken(dataDir, env.BOOTSTRAP_TOKEN);
   const auth = createAuth(db, config), dist = resolve(options.distDir || 'dist');
   const integrationSettings = await createIntegrationSettings({ db, env, secret: config.sessionSecret });
   const direct = createDirectCampaigns({ db, env, appUrl, secret: config.sessionSecret, store });
@@ -195,22 +196,20 @@ export async function createApp(options: AppOptions = {}) {
         if (path === '/api/auth/setup' && req.method === 'POST') {
           await auth.limit('setup:' + auth.clientAddress(req), 10);
           if (await claimed(db)) throw new HttpError(409, 'Setup is already complete. Sign in to continue.');
-          auth.requireSetupProof(body.token);
-          const name = text(body.name, 'Name'), mail = email(body.email), hash = await hashPassword(password(body.password));
-          if (body.sample !== undefined && typeof body.sample !== 'boolean') bad('Sample must be true or false.');
-          const id = randomUUID(), workspaceId = randomUUID(), projectId = randomUUID();
+          // The first sign-up claims the installation as its owner (as in Discover); afterwards accounts join only by invitation.
+          // Any legacy setup token in the body is ignored. The first project, and its optional sample, is the next step.
+          const name = text(body.name, 'Name'), mail = email(body.email), hash = await hashPassword(password(body.password)), workspace = workspaceName(body.workspaceName);
+          const id = randomUUID(), workspaceId = randomUUID();
           // The installation row lock makes setup single use under parallel requests.
           await db.transaction(async tx => {
             if ((await first<{ claimed: boolean }>(tx.execute(sql`SELECT claimed FROM installation WHERE id = 1 FOR UPDATE`)))?.claimed) throw new HttpError(409, 'Setup is already complete.');
             await tx.execute(sql`INSERT INTO users VALUES (${id}, ${name}, ${mail}, ${hash})`);
             await setInstanceOperator(tx, id, true, 'bootstrap');
-            await tx.execute(sql`INSERT INTO workspaces (id, name) VALUES (${workspaceId}, 'ten98 studio')`); await tx.execute(sql`INSERT INTO memberships VALUES (${workspaceId}, ${id}, 'owner')`);
-            await tx.execute(sql`INSERT INTO projects (id, workspace_id, name) VALUES (${projectId}, ${workspaceId}, 'Brand launch')`);
-            if (body.sample) await seedSample(createStore(tx), projectId);
+            await tx.execute(sql`INSERT INTO workspaces (id, name) VALUES (${workspaceId}, ${workspace})`); await tx.execute(sql`INSERT INTO memberships VALUES (${workspaceId}, ${id}, 'owner')`);
             await tx.execute(sql`UPDATE installation SET claimed = true WHERE id = 1`);
             await auth.establish(res, id, req, tx);
           });
-          return send(201, { user: { id, name, email: mail, isOperator: true }, projectId });
+          return send(201, { user: { id, name, email: mail, isOperator: true }, workspaceId });
         }
         if (path === '/api/auth/login' && req.method === 'POST') return send(200, { user: await auth.login(req, res, { email: email(body.email), password: loginPassword(body.password) }) });
         if (path === '/api/auth/logout' && req.method === 'POST') { await auth.logout(req, res); return send(200, { ok: true }); }
@@ -297,9 +296,16 @@ export async function createApp(options: AppOptions = {}) {
         if (path === '/api/projects' && req.method === 'POST') {
           const workspaceId = text(body.workspaceId, 'Workspace', 100), role = await workspaceAccess(workspaceId, user.id, true);
           if ((Object.hasOwn(body, 'zernioProfileId') || Object.hasOwn(body, 'driveFolderId')) && (!user.isOperator || !['owner', 'admin'].includes(role))) throw new HttpError(403, 'Only an instance operator with workspace administration access can map provider connections.');
+          if (body.sample !== undefined && typeof body.sample !== 'boolean') bad('Sample must be true or false.');
+          if (body.sample && !['owner', 'admin'].includes(role)) throw new HttpError(403, 'Only a workspace owner or administrator can add sample data.');
           const project = projectInput(body) as ProjectInput & { id: string; workspaceId: string }; await checkProfileMapping(db, project.zernioProfileId); project.id = randomUUID(); project.workspaceId = workspaceId;
-          await profileWrite(db.execute(sql`INSERT INTO projects (id, workspace_id, name, color, zernio_profile_id, drive_folder_id) VALUES (${project.id}, ${workspaceId}, ${project.name}, ${project.color}, ${project.zernioProfileId}, ${project.driveFolderId})`));
-          await store.activity(project.id, 'Project created.'); return send(201, { project });
+          // The sample is seeded only into the project this request creates, in the same transaction.
+          await profileWrite(db.transaction(async tx => {
+            await tx.execute(sql`INSERT INTO projects (id, workspace_id, name, color, zernio_profile_id, drive_folder_id) VALUES (${project.id}, ${workspaceId}, ${project.name}, ${project.color}, ${project.zernioProfileId}, ${project.driveFolderId})`);
+            const projectStore = createStore(tx); await projectStore.activity(project.id, 'Project created.');
+            if (body.sample) await seedSample(projectStore, project.id);
+          }));
+          return send(201, { project });
         }
         const projectRoute = path.match(/^\/api\/projects\/([^/]+)(?:\/(.*))?$/);
         if (projectRoute) {

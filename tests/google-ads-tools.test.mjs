@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
 import { stripTypeScriptTypes } from 'node:module';
+import { firstProject } from './first-project.ts';
 
 test('Google Ads tools use real HTTP routes, selected customer scope, durable keyword mutations, planner, negatives, targeting and bidding', { skip: postgresSkip }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ten98-google-tools-')), origin = 'http://127.0.0.1:3000';
@@ -50,7 +51,7 @@ test('Google Ads tools use real HTTP routes, selected customer scope, durable ke
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`;
   async function request(path, body, key = 'google-tool-' + calls.length) { const response = await fetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { Origin: origin, 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
   try {
-    const setup = await request('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Google tools QA', email: 'google-tools@example.test', password: 'Google tools fixture password!', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await request('/api/auth/setup', { name: 'Google tools QA', email: 'google-tools@example.test', password: 'Google tools fixture password!' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     const state = (await request('/api/state')).data, projectId = state.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, projectId);
     const route = `/api/projects/${projectId}/integrations/ads/google/`, selection = { accountId, adAccountId, campaignId: '12345' }, query = new URLSearchParams(selection);

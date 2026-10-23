@@ -8,6 +8,7 @@ import type { TestContext } from 'node:test';
 import type { KeyObject } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 type Fields = Record<string, any>;
 
@@ -66,7 +67,7 @@ async function fixture(t: TestContext, sesEnv: Fields = SES) {
     const response = await fetch(base + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const text = await response.text(); return { status: response.status, data: text && response.headers.get('content-type')?.includes('json') ? JSON.parse(text) : text, cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'QA owner', email: 'ses-owner@example.test', password: 'fixture-passphrase-long-enough', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'QA owner', email: 'ses-owner@example.test', password: 'fixture-passphrase-long-enough' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
   const path = `/api/projects/${setup.data.projectId}/direct`;
   const person = async (email: string) => { const result = await request(path + '/contacts', 'POST', { name: 'Robin', email, consents: { email: true }, consentSource: 'Customer request, recorded in CRM' }); assert.equal(result.status, 201, JSON.stringify(result.data)); return result.data.contact; };
   const contact = async (id: string) => (await request(path + '/contacts')).data.contacts.find((row: Fields) => row.id === id);

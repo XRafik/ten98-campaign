@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setInstanceOperator } from '../server/instance-operators.ts';
 import { blockWrites, postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 const cli = fileURLToPath(new URL('../server/cli.ts', import.meta.url));
@@ -92,7 +93,7 @@ test('native HTTP sessions observe host revocation immediately, retain workspace
     return { status: response.status, data: await response.json(), cookie: response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ') };
   }
   const password = 'owner fixture original password', nextPassword = 'owner fixture replacement password';
-  const setup = await request('/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Owner', email: 'owner@example.test', password, sample: false } }); assert.equal(setup.status, 201);
+  const setup = await request('/auth/setup', { body: { name: 'Owner', email: 'owner@example.test', password } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201);
   const cookie = setup.cookie, state = (await request('/state', { cookie })).data;
   assert.equal(runCli(url, 'revoke-operator', { email: 'owner@example.test' }).status, 0);
   assert.equal((await request('/session', { cookie })).data.user.isOperator, false); assert.equal((await request('/settings/integrations', { cookie })).status, 403);

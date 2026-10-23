@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { stripTypeScriptTypes } from 'node:module';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 // External contracts: current official OpenAPI 1.295.0 /accounts/{accountId}/posts,
 // /posts?source=external and /posts/sync-external, checked 2026-10-19.
@@ -28,7 +29,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}/api`; let cookie;
   async function request(path, body, key = randomUUID(), authenticated = true) { const response = await originalFetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, ...(cookie && authenticated ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/auth/setup', { token: app.config.bootstrapToken, name: 'Library owner', email: 'library@example.test', password: 'Synthetic external library fixture passphrase!', sample: false }); cookie = setup.cookie;
+  const setup = await request('/auth/setup', { name: 'Library owner', email: 'library@example.test', password: 'Synthetic external library fixture passphrase!' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie;
   const projectId = setup.data.projectId, project = '/projects/' + projectId; await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', 'library-profile', projectId);
   const campaign = await app.store.create(projectId, 'campaigns', { name: 'External launch', channel: 'social', status: 'draft' });
   const route = (task, platform = 'youtube') => `${project}/integrations/publishing/accounts/account-${platform}/${task}`;

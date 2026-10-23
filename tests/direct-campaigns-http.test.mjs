@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createHmac, randomUUID } from 'node:crypto';
 import { estimateSms, createDirectCampaigns } from '../server/direct-campaigns.ts';
 import { postgresSkip, singleConnection, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 
@@ -52,7 +53,7 @@ async function fixture(t, poolOptions) {
     const response = await fetch(base + path, { method, headers: { Origin: origin, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}), ...override.headers }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const content = await response.text(); return { status: response.status, data: response.headers.get('content-type')?.includes('json') ? JSON.parse(content) : content, cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'QA owner', email: 'direct-owner@example.test', password: 'fixture-passphrase-long-enough', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'QA owner', email: 'direct-owner@example.test', password: 'fixture-passphrase-long-enough' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
   const projectId = setup.data.projectId, path = `/api/projects/${projectId}/direct`;
   await request(`/api/projects/${projectId}`, 'PATCH', { zernioProfileId: 'profile-direct' });
   const person = async (fields = {}) => { const result = await request(path + '/contacts', 'POST', { name: 'Alex', email: 'alex@example.com', phone: '+12025550123', consents: { email: true, sms: true, whatsapp: true }, consentSource: 'Customer request, recorded in CRM', ...fields }); assert.equal(result.status, 201, JSON.stringify(result.data)); return result.data.contact; };

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import pg from 'pg';
 import { createApp } from '../server/index.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 // Contract: cached official Zernio OpenAPI 1.295.0 Blogs; WordPress scheduling
 // requires native future status and an exact publication time, without a content write.
@@ -237,8 +238,8 @@ test('HTTP draft edits, publication and WordPress scheduling share scoped PATCH,
       const response = await fetch(base + path, { method, headers: { ...(method !== 'GET' ? { Origin: origin } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(cookie ? { Cookie: cookie } : {}), 'Idempotency-Key': key }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
       return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
     }
-    const setupBody = { token: app.config.bootstrapToken, name: 'Blog QA', email: 'blog-qa@example.test', password: 'a long local blog fixture password', sample: false };
-    const setup = await request('/api/auth/setup', { body: setupBody }); assert.equal(setup.status, 201); ownerCookie = setup.cookie; projectId = setup.data.projectId;
+    const setupBody = { name: 'Blog QA', email: 'blog-qa@example.test', password: 'a long local blog fixture password', sample: false };
+    const setup = await request('/api/auth/setup', { body: setupBody }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie; projectId = setup.data.projectId;
     await sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, projectId);
     const route = (article, accountId = article.platform + '-account') => `/api/projects/${projectId}/integrations/blogs/${accountId}/${article.blogId}/articles/${article.id}`;
     const review = async article => { const result = await request(route(article)); assert.equal(result.status, 200, JSON.stringify(result)); assert.match(result.data.version, /^[a-f0-9]{64}$/); return { title: 'Reviewed title', bodyHtml: '<p>Reviewed <strong>HTML</strong></p>', version: result.data.version, confirmUpdate: true }; };

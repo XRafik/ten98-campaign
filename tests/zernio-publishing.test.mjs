@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
 import { validatePostForPlatforms } from '../shared/social-posts.ts';
+import { firstProject } from './first-project.ts';
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'campaign-publishing-lookup-')), originalFetch = globalThis.fetch, calls = [], origin = 'https://publishing.example.test';
@@ -24,7 +25,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`; let cookie;
   async function request(path, method = 'GET', body) { const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Publishing owner', email: 'publishing@example.test', password: 'synthetic publishing passphrase long enough', sample: false }); cookie = setup.cookie; const projectId = setup.data.projectId;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'Publishing owner', email: 'publishing@example.test', password: 'synthetic publishing passphrase long enough' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const projectId = setup.data.projectId;
   await request('/api/projects/' + projectId, 'PATCH', { zernioProfileId: 'publishing-profile' });
   return { app, accounts, calls, path: `/api/projects/${projectId}/integrations/publishing/accounts/`, request, setHook(value) { hook = value; }, async close() { globalThis.fetch = originalFetch; await rm(dataDir, { recursive: true, force: true }); } };
 }

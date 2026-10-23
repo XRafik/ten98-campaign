@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP account copies retain separate caption, DAM media, options, approvals and schedules through publication, edit, status and retry', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-account-posts-')), distDir = join(dataDir, 'dist');
@@ -40,7 +41,7 @@ test('HTTP account copies retain separate caption, DAM media, options, approvals
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Account publishing QA', email: 'account-publishing@example.test', password: 'synthetic publishing password long enough', sample: false }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'Account publishing QA', email: 'account-publishing@example.test', password: 'synthetic publishing password long enough' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const state = (await request('/api/state')).data, project = `/api/projects/${state.projectId}`, social = project + '/integrations/social';
     assert.equal((await request(project, 'PATCH', { zernioProfileId: profileId })).status, 200);
     const assetResult = await request(project + '/assets', 'POST', { name: 'Second brand creative', kind: 'image', url: 'https://cdn.example.test/account.jpg', deliveryUrl: 'https://cdn.example.test/account.jpg', approval: 'approved', width: 1080, height: 1080, size: 1000 }); assert.equal(assetResult.status, 201, JSON.stringify(assetResult.data)); const asset = assetResult.data.record;

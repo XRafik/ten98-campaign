@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { createStore } from '../server/database.ts';
 import { handleApprovals, assertPublishingApproval } from '../server/approvals.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const profileId = 'review-profile';
 const accounts = [['fb-a', 'facebook'], ['fb-b', 'facebook'], ['yt-a', 'youtube'], ['yt-b', 'youtube']].map(([_id, platform]) => ({ _id, profileId, platform, isActive: true }));
@@ -52,7 +53,7 @@ async function fixture(t, { admin = true } = {}) {
   }
   const post = (path, body, options = {}) => request(path, { ...options, method: 'POST', body });
   const password = 'a sufficiently long published edit fixture password';
-  const setup = await post('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Fixture Owner', email: 'owner@example.test', password, sample: false }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+  const setup = await post('/api/auth/setup', { name: 'Fixture Owner', email: 'owner@example.test', password }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
   const state = (await request('/api/state')).data, projectId = state.projectId, project = `/api/projects/${projectId}`, workspaceId = state.workspaces[0].id;
   assert.equal((await request(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
   const passwordHash = (await app.sql.get('SELECT password FROM users WHERE id=?', state.user.id)).password;

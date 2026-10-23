@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 async function fixture(t) {
   const dataDir = await mkdtemp(join(tmpdir(), 'publishing-tools-')), originalFetch = globalThis.fetch, calls = [], origin = 'https://tools.example.test';
@@ -27,7 +28,7 @@ async function fixture(t) {
     const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Tools owner', email: 'tools@example.test', password: 'synthetic tools passphrase long enough', sample: false }); cookie = setup.cookie; const projectId = setup.data.projectId;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'Tools owner', email: 'tools@example.test', password: 'synthetic tools passphrase long enough' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const projectId = setup.data.projectId;
   assert.equal((await request('/api/projects/' + projectId, 'PATCH', { zernioProfileId: 'tools-profile' })).status, 200);
   return { app, accounts, calls, audio, request, projectId, read: (route, method = 'GET') => request(`/api/projects/${projectId}/integrations/publishing/accounts/${route}`, method), setHook(value) { hook = value; }, async close() { globalThis.fetch = originalFetch; await rm(dataDir, { recursive: true, force: true }); } };
 }

@@ -8,6 +8,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { createApp } from '../server/index.ts';
 import pgDriver from 'pg';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 
@@ -63,7 +64,7 @@ async function fixture(t) {
     const response = await fetch(base + path, { method, headers: { Origin: 'https://campaign.example.test', ...(cookie ? { Cookie: cookie } : {}), ...(method !== 'GET' ? { 'Content-Type': 'application/json', 'Idempotency-Key': key } : {}) }, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, data: response.headers.get('content-type')?.startsWith('application/json') ? await response.json() : Buffer.from(await response.arrayBuffer()), headers: response.headers, cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Inbox owner', email: 'inbox-owner@example.test', password: 'inbox fixture passphrase long enough', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'Inbox owner', email: 'inbox-owner@example.test', password: 'inbox fixture passphrase long enough' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
   await request(`/api/projects/${projectId}`, 'PATCH', { zernioProfileId: 'inbox-profile' }); const path = `/api/projects/${projectId}/integrations/inbox`;
   return { get app() { return app; }, projectId, path, calls, comments, review, accounts, request, writes: () => calls.filter(call => call.options.method !== 'GET' && !call.url.pathname.includes('/tools/validate/')), setHook(value) { hook = value; }, setForeign(value) { sourceForeign = value; }, setMalformedHistory(value) { malformedHistory = value; }, setIncoming(value) { lastIncoming = value; }, async reopen() { await app.close(); app = Object.assign(await createApp({ ...config, database: { pool: first.database.pool, db: first.database.db } }), { sql: first.sql }); await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); base = `http://127.0.0.1:${app.server.address().port}`; return app; }, async close() { if (app !== first) await app.close(); globalThis.fetch = originalFetch; await rm(dataDir, { recursive: true, force: true }); } };
 }

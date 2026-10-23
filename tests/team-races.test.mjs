@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashPassword } from '../server/auth.ts';
 import { blockWrites, postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const origin = 'http://127.0.0.1:3018';
 async function owners(t) {
@@ -16,7 +17,7 @@ async function owners(t) {
     return { status: response.status, data: await response.json(), cookie: response.headers.getSetCookie().map(value => value.split(';')[0]).join('; ') };
   };
   const password = 'team race fixture password';
-  const setup = await request('/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'First', email: 'first@example.test', password, sample: false } });
+  const setup = await request('/auth/setup', { method: 'POST', body: { name: 'First', email: 'first@example.test', password } }); setup.data.projectId = await firstProject(app, setup);
   const workspaceId = (await request('/state', { cookie: setup.cookie })).data.workspaces[0].id;
   await pool.query('INSERT INTO users VALUES ($1, $2, $3, $4)', ['second', 'Second', 'second@example.test', await hashPassword(password)]);
   await pool.query("INSERT INTO memberships VALUES ($1, 'second', 'owner')", [workspaceId]);

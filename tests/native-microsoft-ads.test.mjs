@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, singleConnection, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const input = { name: 'Native Microsoft search', dailyBudget: 20, maxCpc: 2, finalUrl: 'https://example.test/offer', headlines: ['Plan Better Campaigns', 'Coordinate Your Launch', 'See Campaign Performance'], descriptions: ['Plan and review campaign work in one place.', 'Bring channels and teams together for your next launch.'], keywords: ['campaign manager', 'campaign planning'], matchType: 'Exact', locationIds: ['190'], confirmed: true };
 async function fixture(t, poolOptions) {
@@ -49,7 +50,7 @@ async function fixture(t, poolOptions) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}`;
   async function request(path, method = 'GET', body, key, auth = cookie) { const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(auth ? { Cookie: auth } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(key ? { 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Native Microsoft operator', email: 'native-microsoft@example.test', password: 'isolated Microsoft fixture password', sample: false }); cookie = setup.cookie; const projectId = setup.data.projectId, prefix = `/api/projects/${projectId}/microsoft-ads`;
+  const setup = await request('/api/auth/setup', 'POST', { name: 'Native Microsoft operator', email: 'native-microsoft@example.test', password: 'isolated Microsoft fixture password' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const projectId = setup.data.projectId, prefix = `/api/projects/${projectId}/microsoft-ads`;
   return { app, env, calls, state, request, projectId, prefix, userId: setup.data.user.id, async map() { const result = await request(prefix + '/connection', 'POST', { customerId: '10', accountId: '100', confirmed: true }); assert.equal(result.status, 200, JSON.stringify(result.data)); }, async close() { globalThis.fetch = originalFetch; await rm(dataDir, { recursive: true, force: true }); } };
 }
 

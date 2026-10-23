@@ -4,6 +4,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP OOH inventory, proposals, booking, delivery and cancellation preserve exact scope and concurrent action receipts', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-ooh-workflows-')), origin = 'http://127.0.0.1:3000';
@@ -31,7 +32,7 @@ test('HTTP OOH inventory, proposals, booking, delivery and cancellation preserve
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'OOH fixture', email: 'ooh@example.test', password: 'a sufficiently long fixture password', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'OOH fixture', email: 'ooh@example.test', password: 'a sufficiently long fixture password' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie;
     const state = (await request('/api/state')).data, project = `/api/projects/${state.projectId}`, path = project + '/ooh';
     const connection = { domainId: 7, clientId: 'brand', clientName: 'Fixture brand', screenIds: [101, 102] };
     assert.equal((await request(path + '/connection', 'POST', connection)).status, 200);

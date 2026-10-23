@@ -7,6 +7,7 @@ import { randomUUID, createHmac } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('local auth, CSRF, workspace isolation, roles, validated CRUD and session expiry', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-campaign-test-'));
@@ -25,11 +26,11 @@ test('local auth, CSRF, workspace isolation, roles, validated CRUD and session e
     const home = await fetch(base + '/'); assert.match(home.headers.get('content-type'), /text\/html/); assert.match(home.headers.get('content-security-policy'), /frame-ancestors 'none'/);
     assert.equal((await fetch(base + '/%2e%2e%2fsecret.txt')).status, 403);
     assert.equal((await request('/api/state')).status, 401);
-    const setup = { token: app.config.bootstrapToken, name: 'Owner', email: 'owner@example.com', password: ' a long password ', sample: true };
+    const setup = { name: 'Owner', email: 'owner@example.com', password: ' a long password ' };
     assert.equal((await request('/api/auth/setup', { method: 'POST', body: setup, headers: { Origin: '' } })).status, 403);
     assert.equal((await request('/api/auth/setup', { method: 'POST', body: setup, headers: { Origin: 'https://attacker.example' } })).status, 403);
     const created = await request('/api/auth/setup', { method: 'POST', body: setup });
-    assert.equal(created.status, 201); ownerCookie = created.cookie;
+    assert.equal(created.status, 201); ownerCookie = created.cookie; await firstProject(app, created, { sample: true });
     assert.equal((await request('/api/auth/setup', { method: 'POST', body: setup })).status, 409);
     const state = (await request('/api/state')).data, projectId = state.projectId, workspaceId = state.workspaces[0].id;
     assert.equal(state.workspaces[0].role, 'owner'); assert.equal(state.user.isOperator, true); assert.ok(state.campaigns.length > 0);

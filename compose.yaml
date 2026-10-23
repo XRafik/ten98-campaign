@@ -38,7 +38,7 @@ services:
     # The app refuses to serve an unmigrated schema, so apply pending migrations first (idempotent, advisory-locked).
     command: ["sh", "-c", "node server/cli.ts migrate && exec node server/index.ts"]
     volumes:
-      # The data directory keeps the session secret and bootstrap token; application data lives in PostgreSQL.
+      # The data directory keeps the session secret; application data lives in PostgreSQL.
       - campaign-data:/app/data
     # The app writes only to its data volume and /tmp.
     read_only: true

@@ -12,6 +12,7 @@ import { handleZernioContacts } from '../server/zernio-contacts.ts';
 import { createContacts } from '../server/contacts.ts';
 import { IntegrationError } from '../server/provider-core.ts';
 import { postgresSkip, testDatabase, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 const pg = { skip: postgresSkip };
 const profileId = 'profile-a', id = value => String(value).padStart(24, '0');
@@ -390,7 +391,7 @@ test('authenticated contact HTTP workflows use all contacts endpoints, empty rec
       const response = await originalFetch(origin + path, { method, headers: { ...(cookie ? { Cookie: cookie } : {}), ...(csrf ? { Origin: 'https://contacts.example.test' } : {}), ...(body ? { 'Content-Type': 'application/json', 'Idempotency-Key': key } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
       const next = response.headers.get('set-cookie'); if (next) cookie = next.split(';')[0]; return { status: response.status, data: await response.json() };
     };
-    const setupResponse = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Contact QA owner', email: 'contacts-qa@example.test', password: 'Synthetic contacts passphrase 2026!', sample: false }); assert.equal(setupResponse.status, 201);
+    const setupResponse = await request('/api/auth/setup', 'POST', { name: 'Contact QA owner', email: 'contacts-qa@example.test', password: 'Synthetic contacts passphrase 2026!' }); setupResponse.data.projectId = await firstProject(app, setupResponse, { cookie }); assert.equal(setupResponse.status, 201);
     const projectId = setupResponse.data.projectId; assert.equal((await request(`/api/projects/${projectId}`, 'PATCH', { zernioProfileId: profileId })).status, 200); const path = `/api/projects/${projectId}/integrations/contacts`;
     const local = await app.direct.contacts.save(projectId, { name: 'HTTP local contact', phone: '+12025550102', consents: { whatsapp: true }, consentSource: 'Synthetic HTTP opt-in' });
     let overview = (await request(path + '/overview')).data, localRow = overview.localContacts.find(row => row.id === local.id), body = { accountId: 'wa-a', localContactId: local.id, expectedLocalVersion: localRow.version, confirmed: true };

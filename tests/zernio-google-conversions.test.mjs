@@ -10,6 +10,7 @@ import { postgresSkip, testApp } from './postgres.mjs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import * as designSystem from '@ten98/ui';
+import { firstProject } from './first-project.ts';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'ten98-google-conversions-')), origin = 'https://conversions.example.test', originalFetch = globalThis.fetch, calls = [];
@@ -39,7 +40,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${app.server.address().port}/api`; let cookie;
   async function request(path, body, key = randomUUID(), authenticated = true) { const result = await originalFetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, ...(cookie && authenticated ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: result.status, data: await result.json(), cookie: result.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/auth/setup', { token: app.config.bootstrapToken, name: 'Conversion owner', email: 'conversions@example.test', password: 'Synthetic conversions fixture passphrase!', sample: false }); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
+  const setup = await request('/auth/setup', { name: 'Conversion owner', email: 'conversions@example.test', password: 'Synthetic conversions fixture passphrase!' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
   await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, setup.data.projectId);
   const route = project + '/integrations/google-conversions/' + accountId, query = '?adAccountId=' + adAccountId;
   const get = name => request(route + '/' + name + query), save = async (name, snapshotName, settings, extra = {}, key) => { const data = (await get(snapshotName)).data; return request(route + '/' + name, { adAccountId, expectedVersion: data.version, confirmChange: true, settings, ...extra }, key); };

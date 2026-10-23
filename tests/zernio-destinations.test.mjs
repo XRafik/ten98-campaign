@@ -11,6 +11,7 @@ import * as design from '@ten98/ui';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createApp } from '../server/index.ts';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), 'campaign-destinations-')), origin = 'https://destinations.example.test', originalFetch = globalThis.fetch, calls = [];
@@ -33,7 +34,7 @@ async function fixture(t) {
   };
   await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve)); let base = `http://127.0.0.1:${app.server.address().port}/api`, cookie;
   async function request(path, body, key = randomUUID(), authenticated = true) { const response = await originalFetch(base + path, { method: body === undefined ? 'GET' : 'POST', headers: { Origin: origin, ...(cookie && authenticated ? { Cookie: cookie } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Idempotency-Key': key }) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
-  const setup = await request('/auth/setup', { token: app.config.bootstrapToken, name: 'Destination owner', email: 'destinations@example.test', password: 'Synthetic destination fixture passphrase!', sample: false }); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
+  const setup = await request('/auth/setup', { name: 'Destination owner', email: 'destinations@example.test', password: 'Synthetic destination fixture passphrase!' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const project = '/projects/' + setup.data.projectId;
   await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', 'destination-profile', setup.data.projectId);
   const route = platform => `${project}/integrations/publishing/accounts/account-${platform}/${platform === 'youtube' ? 'youtube-playlists' : platform === 'reddit' ? 'reddit-subreddits' : 'pinterest-boards'}`, get = platform => request(route(platform) + '/manage'), write = async (platform, task, settings, extra = {}, key) => request(route(platform) + '/' + task, { expectedVersion: (await get(platform)).data.version, confirmed: true, ...(task === 'create' ? { settings } : { destinationId: settings }), ...extra }, key);
   return { get app() { return app; }, accounts, state, calls, project, route, request, get, write, writes: () => calls.filter(row => row.method !== 'GET'), // Reopening is a second app over the same database; testApp closes the first one and drops the database.

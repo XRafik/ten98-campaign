@@ -46,7 +46,7 @@ test('an account without project access can create its workspace through the act
       cookie = response.headers.get('set-cookie')?.split(';')[0] || cookie;
       const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result;
     }
-    await api('/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Existing owner', email: 'owner@example.test', password: 'existing owner fixture password', sample: false });
+    await api('/auth/setup', 'POST', { name: 'Existing owner', email: 'owner@example.test', password: 'existing owner fixture password' });
     const existing = await api('/state'), userId = randomUUID();
     await app.sql.run('INSERT INTO users VALUES(?,?,?,?)', userId, 'New member', 'new-member@example.test', await hashPassword('new member fixture password'));
     await api('/auth/login', 'POST', { email: 'new-member@example.test', password: 'new member fixture password' });

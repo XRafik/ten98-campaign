@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { postgresSkip, testApp } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP publishing approvals, Drive delivery links and provider outcome reviews are wired end to end', { skip: postgresSkip }, async t => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ten98-workflows-http-')), distDir = join(dataDir, 'dist');
@@ -41,7 +42,7 @@ test('HTTP publishing approvals, Drive delivery links and provider outcome revie
   }
   const post = (path, body, options = {}) => request(path, { ...options, method: 'POST', body });
   try {
-    const setup = await post('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Workflow owner', email: 'workflow-owner@example.test', password: 'a sufficiently long workflow fixture password', sample: false }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+    const setup = await post('/api/auth/setup', { name: 'Workflow owner', email: 'workflow-owner@example.test', password: 'a sufficiently long workflow fixture password' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const state = (await request('/api/state')).data, projectId = state.projectId, workspaceId = state.workspaces[0].id, project = `/api/projects/${projectId}`;
     assert.equal(state.user.isOperator, true);
     assert.equal((await request(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);

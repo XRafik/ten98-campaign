@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp } from '../server/index.ts';
 import { postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 test('HTTP paused campaign copies bind reviewed scope, durable native claims and explicit read-only verification', { skip: postgresSkip }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ten98-campaign-copy-')), origin = 'http://127.0.0.1:3000', originalFetch = globalThis.fetch;
@@ -46,7 +47,7 @@ test('HTTP paused campaign copies bind reviewed scope, durable native claims and
   const role = value => app.sql.run('UPDATE memberships SET role=? WHERE workspace_id=? AND user_id=?', value, state.workspaces[0].id, state.user.id);
   await listen();
   try {
-    const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Copy QA', email: 'copy@example.test', password: 'a long campaign copy fixture password', sample: false } }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+    const setup = await request('/api/auth/setup', { body: { name: 'Copy QA', email: 'copy@example.test', password: 'a long campaign copy fixture password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     state = (await request('/api/state')).data; projectId = state.projectId;
     assert.equal((await request(`/api/projects/${projectId}`, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
     let result = await review('normal'); assert.equal(result.status, 200, JSON.stringify(result.data)); const reviewed = result.data;
@@ -153,7 +154,7 @@ test('HTTP ads formats, native account dates, durable controls, published-copy b
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Ads QA', email: 'ads-qa@example.test', password: 'a long local ads fixture password', sample: false } }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+    const setup = await request('/api/auth/setup', { body: { name: 'Ads QA', email: 'ads-qa@example.test', password: 'a long local ads fixture password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const state = (await request('/api/state')).data; projectId = state.projectId; const project = `/api/projects/${projectId}`, route = `${project}/integrations`;
     assert.equal((await request(project, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
     const image = 'https://cdn.example.test/advert.jpg', video = { url: 'https://cdn.example.test/advert.mp4' }, linkUrl = 'https://example.test/launch';
@@ -315,7 +316,7 @@ test('HTTP live ad reviews remain read-only, scoped and honest about unknown ver
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   try {
-    const setup = await request('/api/auth/setup', { body: { token: app.config.bootstrapToken, name: 'Review QA', email: 'ad-review@example.test', password: 'a long review fixture password', sample: false } }); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
+    const setup = await request('/api/auth/setup', { body: { name: 'Review QA', email: 'ad-review@example.test', password: 'a long review fixture password' } }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); ownerCookie = setup.cookie;
     const state = (await request('/api/state')).data; projectId = state.projectId;
     assert.equal((await request(`/api/projects/${projectId}`, { method: 'PATCH', body: { zernioProfileId: profileId } })).status, 200);
     const path = `/api/projects/${projectId}/integrations/ads/review?adId=review-ad`, role = value => app.sql.run('UPDATE memberships SET role=? WHERE workspace_id=? AND user_id=?', value, state.workspaces[0].id, state.user.id);
@@ -413,7 +414,7 @@ test('HTTP reviewed Meta daily budgets bind normalized live currency/proposal an
   const reviewedCampaign = async (amount = 40) => { const result = await reviewCampaign(amount); assert.equal(result.status, 200, JSON.stringify(result)); const payload = { ...body(amount), version: result.data.budgetReview.version, reviewExpiresAt: result.data.budgetReview.expiresAt }; delete payload.adSetId; return payload; };
   const settle = async result => { if (result.data.operation?.status === 'uncertain') await app.sql.run("UPDATE integration_operations SET status='reviewed-not-applied' WHERE id=?", result.data.operation.id); };
   try {
-    const setup = await request('/api/auth/setup', { token: app.config.bootstrapToken, name: 'Budget QA', email: 'budget@example.test', password: 'long local budget fixture password', sample: false }); cookie = setup.cookie; const state = (await request('/api/state')).data; projectId = state.projectId; workspaceId = state.workspaces[0].id; userId = state.user.id;
+    const setup = await request('/api/auth/setup', { name: 'Budget QA', email: 'budget@example.test', password: 'long local budget fixture password' }); setup.data.projectId = await firstProject(app, setup); cookie = setup.cookie; const state = (await request('/api/state')).data; projectId = state.projectId; workspaceId = state.workspaces[0].id; userId = state.user.id;
     const response = await originalFetch(base + `/api/projects/${projectId}`, { method: 'PATCH', headers: { Cookie: cookie, Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ zernioProfileId: profileId }) }); assert.equal(response.status, 200); route = `/api/projects/${projectId}/integrations/ads`;
     for (const platform of ['facebook', 'instagram']) for (const currency of ['AED', 'USD']) {
       await reset(); campaign.platform = platform; campaign.currency = currency; liveMode = 'paginated'; const payload = await reviewed(30.25), before = writes.length, sibling = structuredClone(campaign.adSets[1]); const result = await request(route + '/adset', payload, 'budget-' + platform + currency);
@@ -510,7 +511,7 @@ test('HTTP Meta campaign discovery includes zero-ad campaigns only within one ve
   async function request(path, method = 'GET', body) { const response = await originalFetch(base + path, { method, headers: { Origin: origin, ...(cookie ? { Cookie: cookie } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) }); return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] }; }
   try {
     await new Promise((resolve, reject) => { app.server.once('error', reject); app.server.listen(0, '127.0.0.1', resolve); }); base = `http://127.0.0.1:${app.server.address().port}`;
-    const setup = await request('/api/auth/setup', 'POST', { token: app.config.bootstrapToken, name: 'Discovery QA', email: 'discovery@example.test', password: 'a long local discovery fixture password', sample: false }); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
+    const setup = await request('/api/auth/setup', 'POST', { name: 'Discovery QA', email: 'discovery@example.test', password: 'a long local discovery fixture password' }); setup.data.projectId = await firstProject(app, setup); assert.equal(setup.status, 201); cookie = setup.cookie; projectId = setup.data.projectId;
     await app.sql.run('UPDATE projects SET zernio_profile_id=? WHERE id=?', profileId, projectId); await app.sql.run("UPDATE memberships SET role='viewer'");
     const route = `/api/projects/${projectId}/integrations/ads/campaign-discovery?accountId=meta-a&adAccountId=act_123`;
     let result = await request(route); assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.data.complete, true); assert.deepEqual(result.data.campaigns.map(row => row.adCount), [0, 3]); assert.equal(result.data.accountId, 'meta-a'); assert.equal(result.data.adAccountId, 'act_123'); assert.equal(JSON.stringify(result).includes('never-expose-discovery-secret'), false); assert.equal(Object.hasOwn(result.data.campaigns[0], 'budget'), false);

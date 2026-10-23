@@ -8,7 +8,7 @@ import { parseTrustedProxies, resolveClientAddress } from '@ten98/runtime';
 import type { Database, Executor } from './database.ts';
 import { joinInvitation, lockInvitation } from './invitations.ts';
 
-export interface AuthConfig { appUrl: string; sessionSecret: string; bootstrapToken?: string; oidcEnabled?: boolean; oidcIssuer: string; oidcClientId: string; oidcClientSecret?: string; oidcAllowedEmails: string[]; trustedProxies?: string | string[] }
+export interface AuthConfig { appUrl: string; sessionSecret: string; oidcEnabled?: boolean; oidcIssuer: string; oidcClientId: string; oidcClientSecret?: string; oidcAllowedEmails: string[]; trustedProxies?: string | string[] }
 export interface PublicUser { id: string; name: string; email: string; isOperator: boolean }
 type UserRow = { id: string; name: string; email: string; password?: string | null; isOperator?: unknown; expiresAt?: number };
 type OidcFlow = { state: string; verifier: string; nonce: string; invite_hash: string | null };
@@ -32,11 +32,6 @@ function storedSecret(dataDir: string, provided: string | undefined, filename: s
   }
 }
 export const sessionSecret = (dataDir: string, provided?: string) => storedSecret(dataDir, provided, 'session-secret', 'SESSION_SECRET');
-export function bootstrapToken(dataDir: string, provided?: string): string {
-  const token = storedSecret(dataDir, provided, 'bootstrap-token', 'BOOTSTRAP_TOKEN');
-  if (token.length > 512 || /\s/.test(token)) throw new Error('BOOTSTRAP_TOKEN must contain 32 to 512 non-whitespace characters.');
-  return token;
-}
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString('hex');
   return `scrypt$${salt}$${(await derive(password, salt, 64, { N: 65536, maxmem: 128 * 1024 * 1024 })).toString('hex')}`;
@@ -122,9 +117,6 @@ export function createAuth(db: Database, config: AuthConfig, { openidClient = ()
     user, establish, limit, clientAddress,
     /** The stored key of this request's session cookie, or '' when it carries none, for guards that join on sessions. */
     sessionKey(req: IncomingMessage): string { const token = sessionToken(req); return token && /^[\w-]{43}$/.test(token) ? digest(token) : ''; },
-    requireSetupProof(token: unknown): void {
-      if (typeof token !== 'string' || !token.length || token.length > 512 || !config.bootstrapToken || !timingSafeEqual(Buffer.from(digest(token)), Buffer.from(digest(config.bootstrapToken)))) throw new HttpError(403, 'The setup token is not valid. Obtain it from the application host.');
-    },
     async account(userId: string) {
       const row = await first<{ password: string | null; sessions: number }>(db.execute(sql`SELECT password, (SELECT count(*) FROM sessions WHERE user_id = ${userId} AND expires_at > ${Date.now()}) AS sessions FROM users WHERE id = ${userId}`));
       return { localPassword: Boolean(row?.password), activeSessions: row?.sessions ?? 0 };

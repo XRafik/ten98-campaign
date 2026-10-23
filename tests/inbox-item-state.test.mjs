@@ -8,6 +8,7 @@ import { createContacts } from '../server/contacts.ts';
 import { createWebhookService } from '../server/webhooks.ts';
 import { handleInbox } from '../server/inbox.ts';
 import { blockWrites, lockWaiters, postgresSkip, testApp, testDatabase } from './postgres.mjs';
+import { firstProject } from './first-project.ts';
 
 // Team triage overlay (ten98-campaign#41 change 1): waiting/first reply from the webhook drain and confirmed replies,
 // and the item-state read and update endpoints with their role, membership, lock and optimistic-concurrency gates.
@@ -107,7 +108,7 @@ async function appFixture(t) {
     return { status: response.status, data: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
   }
   const password = 'inbox state fixture passphrase long enough';
-  const setup = await request('/api/auth/setup', { method: 'POST', body: { token: app.config.bootstrapToken, name: 'Owner', email: 'owner@example.test', password, sample: false } });
+  const setup = await request('/api/auth/setup', { method: 'POST', body: { name: 'Owner', email: 'owner@example.test', password } }); setup.data.projectId = await firstProject(app, setup);
   assert.equal(setup.status, 201); const owner = setup.cookie, projectId = setup.data.projectId;
   assert.equal((await request(`/api/projects/${projectId}`, { method: 'PATCH', body: { zernioProfileId: 'inbox-profile' }, cookie: owner })).status, 200);
   const { workspace_id: workspaceId } = await app.sql.get('SELECT workspace_id FROM projects WHERE id=?', projectId), ownerId = (await app.sql.get("SELECT id FROM users WHERE email='owner@example.test'")).id, hash = (await app.sql.get('SELECT password FROM users WHERE id=?', ownerId)).password;
