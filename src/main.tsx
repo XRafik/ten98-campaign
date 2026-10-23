@@ -1,8 +1,8 @@
 import React, { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppIcon as Icon, AppBrand as Brand, AppField as Field, AppBadge, AppStat as Stat, AppSelect } from '@ten98/ui/app';
-import { ActivityFeed, Avatar, Badge as UiBadge, BarList, Checkbox, DescriptionList, FileField, Image, ResourceCard, DataTable, type DataColumn, Grid, Meter, ProportionBar, SegmentedControl, Select as UiSelect, SelectableList, Stack, Switch, Text } from '@ten98/ui';
-import { AccountMenu, Alert, Card, EmptyState, PageHeader, Progress, SectionNav, ToastProvider, useToast, ConfirmDialog, useConfirmDialog, Dialog, Disclosure, FormGrid, Link, AppShell, AppStateScreen, AppTopbar, AuthErrorBoundary, AuthStory, Button, DangerZoneFlow, FirstUserSetupFlow, FormActions, type IconName, Inline, OidcProviderButtons, ProjectCreateFlow, SearchField, SettingsPanel, SidebarNav, type SidebarNavGroup, SidebarStatus, SignInFlow, StatusLine, WorkspaceCreateFlow, WorkspaceOnboarding, WorkspaceProjectSwitcher } from '@ten98/ui';
+import { ActivityFeed, Avatar, Badge as UiBadge, BarList, DescriptionList, FileField, Image, ResourceCard, DataTable, type DataColumn, Grid, Meter, ProportionBar, SegmentedControl, Select as UiSelect, SelectableList, Stack, Switch, Text } from '@ten98/ui';
+import { AccountMenu, Alert, Card, EmptyState, PageHeader, Progress, SectionNav, ToastProvider, useToast, ConfirmDialog, useConfirmDialog, Dialog, Disclosure, FormGrid, Link, AppShell, AppStateScreen, AppTopbar, AuthErrorBoundary, AuthStory, Button, DangerZoneFlow, FirstUserSetupFlow, FormActions, type IconName, Inline, OidcProviderButtons, ProjectCreateFlow, SearchField, SidebarNav, type SidebarNavGroup, SidebarStatus, SignInFlow, StatusLine, WorkspaceCreateFlow, WorkspaceOnboarding, WorkspaceProjectSwitcher } from '@ten98/ui';
 // Library sheets only: @ten98/ui owns the page base, tables, fields and the sign-in card.
 import '@ten98/ui/app-tokens.css';
 import '@ten98/ui/app.css';
@@ -510,7 +510,7 @@ function App() {
   if (!state) return <AppStateScreen surface="card" state={error ? 'error' : 'loading'} brand={<Brand product="Campaign"/>} message={error || 'Loading your campaigns…'} onRetry={error ? () => run(() => reload()) : undefined}/>;
   // After the first sign-up, the owner's workspace has no project yet: the next step creates it.
   const firstProjectWorkspace = !state.projects.length && state.workspaces.find(w => w.role === 'owner' || w.role === 'admin');
-  if (firstProjectWorkspace) return <FirstProject email={state.user.email} workspaceName={firstProjectWorkspace.name} busy={busy} error={error || undefined} onCreate={values => createFirstProject(firstProjectWorkspace.id, values)} onSignOut={signOut}/>;
+  if (firstProjectWorkspace) return <WorkspaceOnboarding brand={<Brand product="Campaign" href="/"/>} label="Workspace access" title={firstProjectWorkspace.name} email={state.user.email} subheading="Create your first project" help="Projects organize campaigns, channel connections and assets in your workspace." nameLabel="Project name" submitLabel="Create project" busyLabel="Creating project…" sampleOptIn={{ label: 'Add sample data' }} error={error || undefined} busy={busy} onSubmit={({ name, sample }) => createFirstProject(firstProjectWorkspace.id, { name, sample })} signOut={{ onClick: signOut }}/>;
   if (!state.projectId || !project) return <WorkspaceOnboarding brand={<Brand product="Campaign" href="/"/>} label="Workspace access" email={state.user.email} subheading="No project access yet." help="Ask a workspace owner for an invitation, refresh after access is granted, or create your own workspace." error={error || undefined} busy={busy} onSubmit={({ name }) => createWorkspace(name)} onRefresh={() => run(() => reload(''))} signOut={{ onClick: signOut }}><AccountSettings request={api} onChanged={() => { run(() => reload('')); }}/></WorkspaceOnboarding>;
   const campaigns = filtered(state.campaigns).filter(c => tab === 'all' || c.status === tab);
   const currencyCampaigns = state.campaigns.filter(c => (c.currency || 'AED') === currency);
@@ -632,14 +632,6 @@ function takeInvite(location: Pick<Location, 'pathname' | 'search' | 'hash'>, hi
   return token;
 }
 const startupInvite = takeInvite(window.location, window.history);
-// Stand-in until WorkspaceOnboarding offers a first-project step: the owner names the first project and may add the sample.
-function FirstProject({ email, workspaceName, busy, error, onCreate, onSignOut }: { email: string; workspaceName: string; busy: boolean; error?: string; onCreate: (values: { name: string; sample: boolean }) => void; onSignOut: () => void }) {
-  return <Stack gap={6}><Brand product="Campaign" href="/"/><PageHeader eyebrow={workspaceName} title="Create your first project" description={`Signed in as ${email}. Projects organize campaigns, channel connections and assets in your workspace.`}/>
-    <SettingsPanel title="First project" submitLabel="Create project" busy={busy} busyLabel="Creating project…" error={error} actions={<Button type="button" variant="ghost" onClick={onSignOut}>Sign out</Button>} onSubmit={form => onCreate({ name: String(form.get('name') ?? ''), sample: form.get('sample') === 'true' })}>
-      <Field label="Project name" name="name" required maxLength={120} autoComplete="off"/>
-      <Checkbox name="sample" value="true" label="Include sample content to explore" defaultChecked/>
-    </SettingsPanel></Stack>;
-}
 // Campaign adapter: the first sign-up claims the installation as owner; invitation continuation stays app-owned.
 // With an invitation in memory the screen says so, prefills the invited email and offers a way back; signing in returns to the invitation.
 function Auth({ session, inviteToken = '', inviteEmail = '', onBackToInvitation, error, busy, onSubmit, onOidcStart }: { session: any; inviteToken?: string; inviteEmail?: string; onBackToInvitation?: () => void; error: string; busy: boolean; onSubmit: (data: any) => void; onOidcStart?: () => void }) {

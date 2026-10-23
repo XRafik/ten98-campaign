@@ -3,10 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import React from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
-import { Button, Checkbox, PageHeader, SettingsPanel, Stack } from '@ten98/ui';
-import { AppBrand, AppField } from '@ten98/ui/app';
+import { WorkspaceOnboarding } from '@ten98/ui';
+import { AppBrand } from '@ten98/ui/app';
 
 const source = await readFile(new URL('../src/main.tsx', import.meta.url), 'utf8');
 const slice = (from: string, to: string) => { const start = source.indexOf(from); assert.ok(start > -1, `${from} is missing`); return source.slice(start, source.indexOf(to, start)); };
@@ -23,22 +22,21 @@ test('after the first sign-up an owner or administrator without projects lands o
   assert.ok(source.indexOf('if (firstProjectWorkspace)') < source.indexOf('if (!state.projectId || !project) return <WorkspaceOnboarding'));
 });
 
-test('the first-project step names the project, offers the sample checked by default and submits the opt-in', async () => {
-  const { code } = await transformWithOxc(slice('function FirstProject(', '\n// Campaign adapter'), 'FirstProject.tsx', { jsx: { runtime: 'classic' } });
-  const FirstProject = new Function('React', 'Brand', 'PageHeader', 'SettingsPanel', 'Button', 'Field', 'Checkbox', 'Stack', code + '; return FirstProject;')(React, AppBrand, PageHeader, SettingsPanel, Button, AppField, Checkbox, Stack);
+test('the first-project step is WorkspaceOnboarding naming a project, with the sample opt-in in its form', async () => {
+  const step = /  if \(firstProjectWorkspace\) return (<WorkspaceOnboarding .+\/>);\n/.exec(source)?.[1];
+  assert.ok(step, 'The first-project step uses the library onboarding flow.');
+  const { code } = await transformWithOxc(`const element = ${step};`, 'FirstProject.tsx', { jsx: { runtime: 'classic' } });
   const created: unknown[] = []; let signedOut = 0;
-  const screen = FirstProject({ email: 'owner@example.test', workspaceName: 'Owner team', busy: false, onCreate: (values: unknown) => created.push(values), onSignOut: () => { signedOut++; } });
-  const html = renderToStaticMarkup(screen);
-  assert.match(html, /<h1[^>]*>Create your first project<\/h1>/);
-  assert.match(html, /Signed in as owner@example\.test/); assert.match(html, /Owner team/);
-  assert.match(html, /name="name"[^>]*required|required[^>]*name="name"/);
-  assert.match(html, /name="sample"[^>]*checked|checked[^>]*name="sample"/);
-  assert.match(html, />Create project</); assert.match(html, />Sign out</);
-  const panel = React.Children.toArray(screen.props.children).find((child: any) => child.type === SettingsPanel) as any;
-  const form = new FormData(); form.set('name', 'Spring launch'); form.set('sample', 'true');
-  panel.props.onSubmit(form); form.delete('sample'); panel.props.onSubmit(form);
-  assert.deepEqual(created, [{ name: 'Spring launch', sample: true }, { name: 'Spring launch', sample: false }]);
-  panel.props.actions.props.onClick(); assert.equal(signedOut, 1);
+  const element = new Function('React', 'Brand', 'WorkspaceOnboarding', 'firstProjectWorkspace', 'state', 'error', 'busy', 'createFirstProject', 'signOut', code + '; return element;')(
+    React, AppBrand, WorkspaceOnboarding, { id: 'w1', name: 'Owner team', role: 'owner' }, { user: { email: 'owner@example.test' } }, '', false,
+    (workspaceId: string, values: unknown) => { created.push([workspaceId, values]); }, () => { signedOut++; });
+  assert.equal(element.type, WorkspaceOnboarding);
+  assert.equal(element.props.email, 'owner@example.test'); assert.equal(element.props.title, 'Owner team');
+  assert.equal(element.props.subheading, 'Create your first project'); assert.equal(element.props.nameLabel, 'Project name'); assert.equal(element.props.submitLabel, 'Create project');
+  assert.deepEqual(element.props.sampleOptIn, { label: 'Add sample data' });
+  element.props.onSubmit({ name: 'Spring launch', sample: true }); element.props.onSubmit({ name: 'Own work', sample: false });
+  assert.deepEqual(created, [['w1', { name: 'Spring launch', sample: true }], ['w1', { name: 'Own work', sample: false }]]);
+  element.props.signOut.onClick(); assert.equal(signedOut, 1);
 });
 
 test('creating the first project posts the opt-in to the workspace and opens the new project once', async () => {
