@@ -15,17 +15,21 @@ const { code } = await transformWithOxc(source.slice(start, end), 'Auth.tsx', { 
 const load = (startupAuthError = '') => new Function('React', 'Brand', 'AuthStory', 'FirstUserSetupFlow', 'OidcProviderButtons', 'SignInFlow', 'startupAuthError', code + '; return Auth;')(React, AppBrand, AuthStory, FirstUserSetupFlow, OidcProviderButtons, SignInFlow, startupAuthError);
 const Auth = load();
 
-test('the first sign-up names the workspace, keeps the password policy and submits no setup token or sample', () => {
+test('first boot is one screen: name, email, password, a prefilled workspace name and one Create owner account button', () => {
   let submitted;
   const screen = Auth({ session: { setupRequired: true, oidcEnabled: true }, error: '', busy: false, onSubmit: values => { submitted = values; } });
   assert.equal(screen.type, FirstUserSetupFlow);
   assert.equal(screen.props.setupToken, false, 'Token-less first sign-up (@ten98/ui 0.24.0).'); assert.equal(screen.props.workspaceName, true); assert.deepEqual(screen.props.defaultValues, { workspaceName: 'My workspace' });
+  for (const absent of ['aside', 'description', 'eyebrow', 'sampleOptIn', 'signInInstead', 'tokenHint']) assert.equal(screen.props[absent], undefined, `No ${absent} on the first-boot screen.`);
   const html = renderToStaticMarkup(screen);
   assert.match(html, /<h1[^>]*>Create owner account<\/h1>/);
+  for (const field of ['name', 'email', 'password']) assert.match(html, new RegExp(`<input[^>]*required[^>]*name="${field}"|<input[^>]*name="${field}"[^>]*required`), `${field} is required`);
   assert.match(html, /name="workspaceName"[^>]*value="My workspace"|value="My workspace"[^>]*name="workspaceName"/);
   assert.match(html, /name="password"[^>]*minLength="12"|minLength="12"[^>]*name="password"/i);
+  assert.equal(html.match(/<button[^>]*type="submit"[^>]*>/g)?.length, 1, 'One button.'); assert.match(html, /<button[^>]*type="submit"[^>]*>Create owner account<\/button>/);
+  assert.doesNotMatch(html, /<button[^>]*type="button"/, 'No other actions.');
   assert.doesNotMatch(html, /name="sample"/, 'The sample opt-in moved to the first-project step.');
-  assert.doesNotMatch(html, /Organization single sign-on/, 'Identity sign-in is unavailable before the owner exists.');
+  assert.doesNotMatch(html, /Organization single sign-on|Plan\. Publish\./, 'No single sign-on or story panel before the owner exists.');
   screen.props.onSubmit({ name: 'Owner', token: 'typed anyway', email: 'owner@example.test', password: 'p'.repeat(12), sample: true, workspaceName: 'Northwind' });
   assert.deepEqual(submitted, { name: 'Owner', email: 'owner@example.test', password: 'p'.repeat(12), workspaceName: 'Northwind' });
 });

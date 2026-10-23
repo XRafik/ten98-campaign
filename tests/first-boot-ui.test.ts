@@ -3,12 +3,23 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { transformWithOxc } from 'vite';
-import { WorkspaceOnboarding } from '@ten98/ui';
+import { AccountMenu, AppShell, AppTopbar, Button, EmptyState, PageHeader, WorkspaceOnboarding } from '@ten98/ui';
 import { AppBrand } from '@ten98/ui/app';
 
 const source = await readFile(new URL('../src/main.tsx', import.meta.url), 'utf8');
 const slice = (from: string, to: string) => { const start = source.indexOf(from); assert.ok(start > -1, `${from} is missing`); return source.slice(start, source.indexOf(to, start)); };
+
+// FirstProject with its one useState replaced, so each test chooses the skipped state and sees the requested change.
+const { code: firstProjectCode } = await transformWithOxc(slice('function FirstProject(', '\n// Campaign adapter'), 'FirstProject.tsx', { jsx: { runtime: 'classic' } });
+function firstProject(skipped: boolean) {
+  const changes: boolean[] = [], created: unknown[] = []; let signedOut = 0;
+  const FirstProject = new Function('React', 'useState', 'Brand', 'WorkspaceOnboarding', 'Button', 'AppShell', 'AppTopbar', 'AccountMenu', 'PageHeader', 'EmptyState', firstProjectCode + '; return FirstProject;')(
+    React, () => [skipped, (next: boolean) => { changes.push(next); }], AppBrand, WorkspaceOnboarding, Button, AppShell, AppTopbar, AccountMenu, PageHeader, EmptyState);
+  const element = FirstProject({ workspaceName: 'My workspace', user: { id: 'u1', name: 'Owner', email: 'owner@example.test' }, busy: false, onCreate: (values: unknown) => { created.push(values); }, onSignOut: () => { signedOut++; } });
+  return { element, changes, created, signedOut: () => signedOut };
+}
 
 test('after the first sign-up an owner or administrator without projects lands on the first-project step', () => {
   const expression = /const firstProjectWorkspace = (.+?);\n/.exec(source)?.[1];
@@ -22,21 +33,30 @@ test('after the first sign-up an owner or administrator without projects lands o
   assert.ok(source.indexOf('if (firstProjectWorkspace)') < source.indexOf('if (!state.projectId || !project) return <WorkspaceOnboarding'));
 });
 
-test('the first-project step is WorkspaceOnboarding naming a project, with the sample opt-in in its form', async () => {
-  const step = /  if \(firstProjectWorkspace\) return (<WorkspaceOnboarding .+\/>);\n/.exec(source)?.[1];
-  assert.ok(step, 'The first-project step uses the library onboarding flow.');
-  const { code } = await transformWithOxc(`const element = ${step};`, 'FirstProject.tsx', { jsx: { runtime: 'classic' } });
-  const created: unknown[] = []; let signedOut = 0;
-  const element = new Function('React', 'Brand', 'WorkspaceOnboarding', 'firstProjectWorkspace', 'state', 'error', 'busy', 'createFirstProject', 'signOut', code + '; return element;')(
-    React, AppBrand, WorkspaceOnboarding, { id: 'w1', name: 'Owner team', role: 'owner' }, { user: { email: 'owner@example.test' } }, '', false,
-    (workspaceId: string, values: unknown) => { created.push([workspaceId, values]); }, () => { signedOut++; });
+test('the first-project step is one project name, the sample opt-in and Skip for now', () => {
+  const { element, changes, created } = firstProject(false);
   assert.equal(element.type, WorkspaceOnboarding);
-  assert.equal(element.props.email, 'owner@example.test'); assert.equal(element.props.title, 'Owner team');
   assert.equal(element.props.subheading, 'Create your first project'); assert.equal(element.props.nameLabel, 'Project name'); assert.equal(element.props.submitLabel, 'Create project');
   assert.deepEqual(element.props.sampleOptIn, { label: 'Add sample data' });
-  element.props.onSubmit({ name: 'Spring launch', sample: true }); element.props.onSubmit({ name: 'Own work', sample: false });
-  assert.deepEqual(created, [['w1', { name: 'Spring launch', sample: true }], ['w1', { name: 'Own work', sample: false }]]);
-  element.props.signOut.onClick(); assert.equal(signedOut, 1);
+  assert.equal(element.props.help, undefined, 'No extra explanation text.'); assert.equal(element.props.signOut, undefined);
+  const html = renderToStaticMarkup(element);
+  assert.match(html, />Create project</); assert.match(html, />Skip for now</);
+  element.props.onSubmit({ name: 'Spring launch', sample: true }); element.props.onSubmit({ name: 'Own work' });
+  assert.deepEqual(created, [{ name: 'Spring launch', sample: true }, { name: 'Own work', sample: false }]);
+  const skip = element.props.children;
+  assert.equal(skip.type, Button); assert.equal(skip.props.variant, 'secondary'); assert.equal(skip.props.children, 'Skip for now');
+  skip.props.onClick(); assert.deepEqual(changes, [true]);
+});
+
+test('skipping lands in the app with no project: an Overview empty state offers Create project', () => {
+  const { element, changes, signedOut } = firstProject(true);
+  assert.equal(element.type, AppShell);
+  const html = renderToStaticMarkup(element);
+  assert.match(html, /<h1[^>]*>Overview<\/h1>/); assert.match(html, /No project yet/); assert.match(html, />Create project</);
+  const empty = React.Children.toArray(element.props.children).find((child: any) => child.type === EmptyState) as any;
+  empty.props.action.props.onClick(); assert.deepEqual(changes, [false], 'Create project returns to the first-project step.');
+  const menu = element.props.topbar.props.actions;
+  menu.props.items.find((item: { id: string }) => item.id === 'sign-out').onSelect(); assert.equal(signedOut(), 1);
 });
 
 test('creating the first project posts the opt-in to the workspace and opens the new project once', async () => {
